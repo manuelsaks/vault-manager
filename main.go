@@ -30,10 +30,10 @@ func DefaultStyles() Styles {
 	}
 }
 
-func createHeader(styles Styles) *tview.TextView {
+func createHeader(styles Styles, title string) *tview.TextView {
 	header := tview.NewTextView().
 		SetDynamicColors(true).
-		SetText("SECRETS[2]").
+		SetText(title).
 		SetTextAlign(tview.AlignCenter)
 	return header
 }
@@ -71,7 +71,7 @@ func createSearchBar() *tview.InputField {
 	return searchBar
 }
 
-func createVersionTable(styles Styles, headers []string, currentVersion []string, olderVersions [][]string) *tview.Table {
+func createVersionTable(styles Styles, currentVersion []string, olderVersions [][]string) *tview.Table {
 	table := tview.NewTable().
 		SetBorders(false).
 		SetSelectable(true, false)
@@ -85,28 +85,25 @@ func createVersionTable(styles Styles, headers []string, currentVersion []string
 			SetTextColor(styles.HeaderTextColor))
 	}
 
-	rowIndex := 1
-	table.SetCell(rowIndex, 0, tview.NewTableCell("CURRENT VERSION").
+	table.SetCell(1, 0, tview.NewTableCell("CURRENT VERSION").
 		SetSelectable(false).
 		SetAlign(styles.HeaderAlign).
 		SetExpansion(styles.Expansion).
 		SetTextColor(styles.HeaderTextColor))
-	rowIndex++
 	for i, cell := range currentVersion {
-		table.SetCell(rowIndex, i, tview.NewTableCell(cell).
+		table.SetCell(2, i, tview.NewTableCell(cell).
 			SetAlign(styles.CellAlign).
 			SetExpansion(styles.Expansion).
 			SetTextColor(styles.CellTextColor).
 			SetSelectable(styles.Selectable))
 	}
 
-	rowIndex += 2
-	table.SetCell(rowIndex, 0, tview.NewTableCell("OLDER VERSIONS").
+	table.SetCell(4, 0, tview.NewTableCell("OLDER VERSIONS").
 		SetSelectable(false).
 		SetAlign(styles.HeaderAlign).
 		SetExpansion(styles.Expansion).
 		SetTextColor(styles.HeaderTextColor))
-	rowIndex++
+	rowIndex := 5
 	for _, row := range olderVersions {
 		for i, cell := range row {
 			table.SetCell(rowIndex, i, tview.NewTableCell(cell).
@@ -147,28 +144,29 @@ func updateTable(header *tview.TextView, table *tview.Table, headers []string, d
 	header.SetText(fmt.Sprintf("SECRETS[%d]_<%s>", rowIndex-1, filter))
 }
 
-func handleInput(app *tview.Application, flex *tview.Flex, searchBar *tview.InputField, header *tview.TextView, table *tview.Table, headers []string, data [][]string, styles Styles, isSearchBarVisible *bool) {
+func handleInput(app *tview.Application, flex *tview.Flex, searchBar *tview.InputField, header *tview.TextView, currentTable *tview.Table, headers []string, data [][]string, styles Styles, isSearchBarVisible *bool) {
 	app.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if event.Key() == tcell.KeyRune && event.Rune() == '/' {
 			if !*isSearchBarVisible {
+				searchBar.SetText("") // Reset search bar text for each view
 				flex.Clear()
 				flex.AddItem(searchBar, 1, 1, true).
 					AddItem(header, 1, 1, false).
-					AddItem(table, 0, 10, true)
+					AddItem(currentTable, 0, 10, true)
 				*isSearchBarVisible = true
 				app.SetFocus(searchBar)
 			} else {
 				flex.Clear()
 				flex.AddItem(header, 1, 1, false).
-					AddItem(table, 0, 10, true)
+					AddItem(currentTable, 0, 10, true)
 				*isSearchBarVisible = false
-				app.SetFocus(table)
+				app.SetFocus(currentTable)
 			}
 			return nil
 		}
 		if event.Key() == tcell.KeyEscape {
 			searchBar.SetText("")
-			updateTable(header, table, headers, data, styles, "")
+			updateTable(header, currentTable, headers, data, styles, "")
 		}
 		return event
 	})
@@ -184,7 +182,7 @@ func main() {
 		{"dev", "null", "enabled", "null"},
 	}
 
-	header := createHeader(styles)
+	header := createHeader(styles, "SECRETS[2]")
 	table := createTable(styles, headers, data)
 	searchBar := createSearchBar()
 	isSearchBarVisible := false
@@ -227,10 +225,39 @@ func main() {
 				{"fadcdcsa", "Enabled", "null", "null", "10/30/2024, 2:48:08 PM", "10/30/2024, 2:48:08 PM"},
 			}
 
-			versionTable := createVersionTable(styles, headers, currentVersion, olderVersions)
+			versionTable := createVersionTable(styles, currentVersion, olderVersions)
+			versionHeader := createHeader(styles, "SECRET VERSIONS")
+			versionSearchBar := createSearchBar()
+			isVersionSearchBarVisible := false
+
 			flex.Clear()
-			flex.AddItem(header, 1, 1, false).
+			flex.AddItem(versionHeader, 1, 1, false).
 				AddItem(versionTable, 0, 10, true)
+
+			handleInput(app, flex, versionSearchBar, versionHeader, versionTable, headers, append([][]string{currentVersion}, olderVersions...), styles, &isVersionSearchBarVisible)
+
+			versionSearchBar.SetChangedFunc(func(text string) {
+				updateTable(versionHeader, versionTable, headers, append([][]string{currentVersion}, olderVersions...), styles, text)
+			})
+			versionSearchBar.SetDoneFunc(func(key tcell.Key) {
+				if key == tcell.KeyEnter {
+					updateTable(versionHeader, versionTable, headers, append([][]string{currentVersion}, olderVersions...), styles, versionSearchBar.GetText())
+					flex.Clear()
+					flex.AddItem(versionHeader, 1, 1, false).
+						AddItem(versionTable, 0, 10, true)
+					isVersionSearchBarVisible = false
+					app.SetFocus(versionTable)
+				} else if key == tcell.KeyEscape {
+					versionSearchBar.SetText("")
+					updateTable(versionHeader, versionTable, headers, append([][]string{currentVersion}, olderVersions...), styles, "")
+					flex.Clear()
+					flex.AddItem(versionHeader, 1, 1, false).
+						AddItem(versionTable, 0, 10, true)
+					isVersionSearchBarVisible = false
+					app.SetFocus(versionTable)
+				}
+			})
+
 			app.SetFocus(versionTable)
 		}
 	})
